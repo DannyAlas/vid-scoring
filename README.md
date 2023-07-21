@@ -1,5 +1,12 @@
-# SIMPLE VIEDO SCORING APP
-![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/3776d189-ae7c-4113-9ee9-47f02a106a60)
+<h1 align="center">SIMPLE VIEDO SCORING APP</h1>
+<a href="https://github.com/DannyAlas/vid-scoring/releases/latest">
+    <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white"/>
+</a>
+<p align="center">
+  <a href="https://github.com/DannyAlas/vid-scoring/releases/latest">
+      <img src="https://github.com/DannyAlas/vid-scoring/assets/81212794/3776d189-ae7c-4113-9ee9-47f02a106a60" width="600" height="400"/>
+  </a>
+</p>
 
 ## Description
 Allows you to score single (onset of behavior) or double (onset and offset of behavior) events in a video.
@@ -9,6 +16,7 @@ Allows you to score single (onset of behavior) or double (onset and offset of be
 2. Unzip the file and run the vid-scoring.exe file.
 
 ## Usage
+> :warning: **Quitting the program without using the `quit key` will NOT save the data**: Be very careful!
 1. Run the vid-scoring.exe file.
 2. Depending on how Windows is feeling that day, you may get a warning message. If so, click "More info" and then "Run anyway".
 ![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/b5620628-329a-4f3d-9c19-48318c0f239f)
