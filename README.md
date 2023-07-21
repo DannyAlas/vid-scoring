@@ -31,7 +31,7 @@ Allows you to score single (onset of behavior) or double (onset and offset of be
 6. The video should then open up in a new window. Press 'h' to see the help menu. Score away!
 
 ## Settings
-The settings file is located in the `main` folder within the folder containing the vid-scoring.exe file. It is called `settings.ini`. You can edit this file with any text editor. The default settings are as follows:
+The settings file is located in the `main` folder within the folder you extracted. It is called `settings.ini`. You can edit this file with any text editor. The default settings are as follows:
 
 ### Scoring Settings
 | Setting Name    | Description                                                                                                                                                                            |
