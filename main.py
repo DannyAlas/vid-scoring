@@ -1,26 +1,31 @@
-import os
 import configparser
-from ctypes import create_unicode_buffer, windll, wintypes
-from typing import Optional
 import json
+import os
+import subprocess
+from ctypes import create_unicode_buffer, windll, wintypes
+from tkinter import filedialog
+from typing import Optional
+
 import cv2
 import keyboard
 import numpy
 import requests
 
-VERSION = "0.0.1"
+VERSION = "v0.0.1"
 
 # try to get the latest version from the repo
 try:
-    response = requests.get("https://api.github.com/repos/DannyAlas/vid-scoring/releases/latest")
+    response = requests.get(
+        "https://api.github.com/repos/DannyAlas/vid-scoring/releases/latest"
+    )
     release = response.json()
     latest_version = release["tag_name"]
     if latest_version != VERSION:
         print(f"\nNewer version available: {latest_version}")
-        print(f"Download here: {release['html_url']}\n\n")
+        print(f"Download here: {release['html_url']}\n")
 except Exception as e:
     pass
-        
+
 
 def getForegroundWindowTitle() -> Optional[str]:
     hWnd = windll.user32.GetForegroundWindow()
@@ -35,15 +40,143 @@ def getForegroundWindowTitle() -> Optional[str]:
         return None
 
 
-file_path = input("Enter the path to the video file: ")
-file_path = file_path.replace('"', "")
+file_path = input("\nEnter the path to the video file: ")
+file_path = file_path.replace('"', "").strip()
 file_name = os.path.basename(file_path)
 
+SAVE_DIR = filedialog.askdirectory()
+
+
+class Timestamps(list):
+    # extends list but implements custom append and pop methods depending on scoring type
+    def __init__(self, scoring_type, save_dir, file_path, csv_file):
+        self.scoring_type = scoring_type
+        self.intermediary = []
+        self.save_dir = save_dir
+        self.file_path = file_path
+        self.csv_file = csv_file
+        if os.path.exists(csv_file):
+            self.load()
+
+    def load(self):
+        pass
+
+    def append(self, val):
+        if self.scoring_type == "onset/offset":
+            if len(self.intermediary) == 0:
+                self.intermediary.append(val)
+                super().append(tuple(self.intermediary))
+            elif len(self.intermediary) == 1:
+                self.intermediary.append(val)
+                super().pop()
+                super().append(tuple(self.intermediary))
+                self.intermediary = []
+        else:
+            super().append(val)
+            super().sort()
+        self.save()
+        self.update_line()
+
+    def pop(self):
+        if self.scoring_type == "onset/offset":
+            if len(self.intermediary) == 0:
+                # the last item is a tuple, we only want to pop the last item in the tuple
+                self.intermediary.append(self[-1][0])
+                super().pop()
+                super().append(
+                    tuple(
+                        self.intermediary,
+                    )
+                )
+            elif len(self.intermediary) == 1:
+                self.intermediary.pop()
+                super().pop()
+        else:
+            super().pop()
+            super().sort()
+        self.save()
+        self.update_line()
+
+    def update_line(self):
+        os.system("cls" if os.name == "nt" else "clear")
+        print(self)
+
+    def __repr__(self):
+        return super().__repr__()
+
+    def __str__(self):
+        return super().__str__()
+
+    def as_array(self):
+        # the first value is either frame or timestamp
+        if save_frame_or_timestamp == "frame":
+            if self.scoring_type == "onset/offset":
+                if len(self[-1]) == 1:
+                    self[-1] = (self[-1][0], self[-1][0])
+                self.insert(0, ("onset frame", "offset frame"))
+            else:
+                self.insert(0, ("frame"))
+        elif save_frame_or_timestamp == "timestamp":
+            if self.scoring_type == "onset/offset":
+                if len(self[-1]) == 1:
+                    self[-1] = (self[-1][0], self[-1][0])
+                self.insert(0, ("onset timestamp", "offset timestamp"))
+            else:
+                self.insert(0, ("timestamp"))
+        return self
+
+    def save(self):
+        if self != []:
+            # if temp.csv exists, append to it
+            csv_file_name = os.path.join(
+                self.save_dir,
+                os.path.splitext(os.path.basename(self.file_path))[0] + ".csv",
+            )
+            numpy.savetxt(
+                os.path.join(SAVE_DIR, csv_file_name),
+                self.as_array(),
+                delimiter=",",
+                fmt="%s",
+            )
+
+
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR)
+
+if os.path.exists(
+    os.path.join(SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv")
+):
+    csv_file_name = os.path.join(
+        SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
+    )
+    try:
+        timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
+    except Exception as e:
+        input(
+            f"WARNING - found existing csv file but could not load it. OVERWRITE the file? (y/n)"
+        )
+        if input == "y":
+            timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
+        else:
+            csv_file_name = os.path.join(
+                SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
+            )
+            n = 1
+            while os.path.exists(csv_file_name):
+                csv_file_name = os.path.join(
+                    SAVE_DIR,
+                    os.path.splitext(os.path.basename(file_path))[0]
+                    + f"({n})"
+                    + ".csv",
+                )
+                n += 1
+
+        timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
 ######### SETTINGS #########
 scoring_type = "onset/offset"
 save_frame_or_timestamp = "frame"
 
-text_color = 255,0,0
+text_color = 255, 0, 0
 show_current_frame_number = True
 show_current_timestamp = False
 show_fps = False
@@ -85,33 +218,55 @@ try:
     scoring_type = config["scoring"]["scoring_type"]
     save_frame_or_timestamp = config["scoring"]["save_frame_or_timestamp"]
     text_color = [int(x) for x in config["scoring"]["text_color"].split(",")]
-    show_current_frame_number = config.getboolean("scoring","show_current_frame_number")
-    show_current_timestamp = config.getboolean("scoring","show_current_timestamp")
-    show_fps = config.getboolean("scoring","show_fps")
+    show_current_frame_number = config.getboolean(
+        "scoring", "show_current_frame_number"
+    )
+    show_current_timestamp = config.getboolean("scoring", "show_current_timestamp")
+    show_fps = config.getboolean("scoring", "show_fps")
     playback_settings = {
         "seek_small": int(config["playback_settings"]["seek_small"].strip()),
         "seek_medium": int(config["playback_settings"]["seek_medium"].strip()),
         "seek_large": int(config["playback_settings"]["seek_large"].strip()),
-        "playback_speed_modulator": int(config["playback_settings"]["playback_speed_modulator"].strip()),
+        "playback_speed_modulator": int(
+            config["playback_settings"]["playback_speed_modulator"].strip()
+        ),
     }
     key_bindings = {
-    "exit": config["key_bindings"]["exit"].strip(),
-    "help": config["key_bindings"]["help"].strip(),
-    "save timestamp": config["key_bindings"]["save_timestamp"].strip(),
-    "show stats": config["key_bindings"]["show_stats"].strip(),
-    "undo last timestamp save": config["key_bindings"]["undo_last_timestamp_save"].strip(),
-    "pause": config["key_bindings"]["pause"].strip(),
-    "seek forward small frames": config["key_bindings"]["seek_forward_small_frames"].strip(),
-    "seek back small frames": config["key_bindings"]["seek_back_small_frames"].strip(),
-    "seek forward medium frames": config["key_bindings"]["seek_forward_medium_frames"].strip(),
-    "seek back medium frames": config["key_bindings"]["seek_back_medium_frames"].strip(),
-    "seek forward large frames": config["key_bindings"]["seek_forward_large_frames"].strip(),
-    "seek back large frames": config["key_bindings"]["seek_back_large_frames"].strip(),
-    "seek to first frame": config["key_bindings"]["seek_to_first_frame"].strip(),
-    "seek to last frame": config["key_bindings"]["seek_to_last_frame"].strip(),
-    "increase playback speed": config["key_bindings"]["increase_playback_speed"].strip(),
-    "decrease playback speed": config["key_bindings"]["decrease_playback_speed"].strip(),
-}
+        "exit": config["key_bindings"]["exit"].strip(),
+        "help": config["key_bindings"]["help"].strip(),
+        "save timestamp": config["key_bindings"]["save_timestamp"].strip(),
+        "show stats": config["key_bindings"]["show_stats"].strip(),
+        "undo last timestamp save": config["key_bindings"][
+            "undo_last_timestamp_save"
+        ].strip(),
+        "pause": config["key_bindings"]["pause"].strip(),
+        "seek forward small frames": config["key_bindings"][
+            "seek_forward_small_frames"
+        ].strip(),
+        "seek back small frames": config["key_bindings"][
+            "seek_back_small_frames"
+        ].strip(),
+        "seek forward medium frames": config["key_bindings"][
+            "seek_forward_medium_frames"
+        ].strip(),
+        "seek back medium frames": config["key_bindings"][
+            "seek_back_medium_frames"
+        ].strip(),
+        "seek forward large frames": config["key_bindings"][
+            "seek_forward_large_frames"
+        ].strip(),
+        "seek back large frames": config["key_bindings"][
+            "seek_back_large_frames"
+        ].strip(),
+        "seek to first frame": config["key_bindings"]["seek_to_first_frame"].strip(),
+        "seek to last frame": config["key_bindings"]["seek_to_last_frame"].strip(),
+        "increase playback speed": config["key_bindings"][
+            "increase_playback_speed"
+        ].strip(),
+        "decrease playback speed": config["key_bindings"][
+            "decrease_playback_speed"
+        ].strip(),
+    }
 except Exception as e:
     print("Error reading settings file: ", e)
     print("\n\nUsing default settings\n\n")
@@ -158,7 +313,7 @@ intro = f"""
 
 help_text = f"""
 ################
-SETTINGS: hmodify in {os.path.join(os.path.dirname(__file__), "settings.json")}
+SETTINGS: modify in {os.path.join(os.path.dirname(__file__), "settings.json")}
 ################
 
 PLAYBACK SETTINGS:
@@ -172,7 +327,7 @@ KEY BINDINGS:
 print(intro)
 
 cap = cv2.VideoCapture(file_path)
-
+timestamps.scoring_type = scoring_type
 if not subtitles:
     # get the number of frames in the video
     max_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -185,57 +340,8 @@ else:
         subtitles = f.read().splitlines()
         subtitles = [s.split("}")[-1] for s in subtitles]
 
-class timestamps(list):
-    # extends list but implements custom append and pop methods depending on scoring type
-    def __init__(self, scoring_type):
-        self.scoring_type = scoring_type
-        self.intermediary = []
-
-    def append(self, val):
-        if self.scoring_type == "onset/offset":
-            if len(self.intermediary) == 0:
-                self.intermediary.append(val)
-                super().append(tuple(self.intermediary))
-            elif len(self.intermediary) == 1:
-                self.intermediary.append(val)
-                super().pop()
-                super().append(tuple(self.intermediary))
-                self.intermediary = []
-        else:
-            super().append(val)
-            super().sort()
-
-        self.update_line()
-        
-    def pop(self):
-        if self.scoring_type == "onset/offset":
-            if len(self.intermediary) == 0:
-                # the last item is a tuple, we only want to pop the last item in the tuple
-                self.intermediary.append(self[-1][0])
-                super().pop()
-                super().append(tuple(self.intermediary,))
-            elif len(self.intermediary) == 1:
-                self.intermediary.pop()
-                super().pop()
-        else:
-            super().pop()
-            super().sort()               
-
-        self.update_line()
-
-    def update_line(self):
-        os.system("cls" if os.name == "nt" else "clear")
-        print(self)
-
-    def __repr__(self):
-        return super().__repr__()
-
-    def __str__(self):
-        return super().__str__()
-
 
 fps = cap.get(cv2.CAP_PROP_FPS)
-timestamps = timestamps(scoring_type)
 saved_keys = []
 frame_count = 0
 max_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -286,7 +392,13 @@ def show_current_frame():
         frame = cap.read()[1]
     if show_current_timestamp:
         cv2.putText(
-            frame, "ts: " + str(sub), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, tuple(text_color), 2
+            frame,
+            "ts: " + str(sub),
+            (50, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            tuple(text_color),
+            2,
         )
 
     if show_current_frame_number == True:
@@ -339,19 +451,20 @@ while cap.isOpened():
         break
     elif keypress == key_bindings["save timestamp"]:
         frozen = not frozen
-        print(save_frame_or_timestamp)
         if save_frame_or_timestamp == "frame":
             timestamps.append(frame_count)
         elif save_frame_or_timestamp == "timestamp":
             timestamps.append(sub)
     elif keypress == key_bindings["show stats"]:
-        update_line(f"""
+        update_line(
+            f"""
         fps: {fps}
         max_frame: {max_frame}
         curent_frame: {frame_count}
         timestamp: {sub}
         timestamps: {timestamps}
-        """)
+        """
+        )
     # modify the playback speed
     elif keypress == key_bindings["increase playback speed"]:
         fps += playback_settings["playback_speed_modulator"]
@@ -421,19 +534,4 @@ while cap.isOpened():
         if frame_count < max_frame - 1:
             frame_count += 1
 
-if timestamps != []:
-    # if temp.csv exists, append to it
-
-    csv_file_name = os.path.splitext(os.path.basename(file_path))[0] + ".csv"
-    num = 1
-    while os.path.exists(csv_file_name):
-        csv_file_name = (
-            os.path.splitext(os.path.basename(file_path))[0]
-            + "("
-            + str(num)
-            + ")"
-            + ".csv"
-        )
-        num += 1
-    numpy.savetxt(csv_file_name, timestamps, delimiter=",", fmt="%s")
-    print("SAVED!!")
+timestamps.save()

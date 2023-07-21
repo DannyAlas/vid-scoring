@@ -2,3 +2,6 @@ Scripts/
 Lib/
 Include/
 *.csv
+*cfg
+dist/
+build/
