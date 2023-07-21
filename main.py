@@ -1,8 +1,7 @@
 import configparser
 import json
 import os
-import subprocess
-from ctypes import create_unicode_buffer, windll, wintypes
+from ctypes import create_unicode_buffer, windll
 from tkinter import filedialog
 from typing import Optional
 
@@ -55,11 +54,26 @@ class Timestamps(list):
         self.save_dir = save_dir
         self.file_path = file_path
         self.csv_file = csv_file
-        if os.path.exists(csv_file):
-            self.load()
+        if csv_file:
+            if os.path.exists(csv_file):
+                self.load()
 
     def load(self):
-        pass
+        if self.scoring_type == "onset/offset":
+            # assert that there are two columns of equivalent length
+            with open(self.csv_file, "r") as f:
+                lines = f.readlines()
+                lines = [tuple(line.strip().split(",")) for line in lines]
+                assert len(lines[0]) == 2
+                assert len(lines[0]) == len(lines[1])
+                self.extend(lines[1:])
+        else:
+            with open(self.csv_file, "r") as f:
+                lines = f.readlines()
+                lines = [line.strip().split(",") for line in lines]
+                assert len(lines[0]) == 1
+                self.extend(lines[1:])
+        self.update_line()
 
     def append(self, val):
         if self.scoring_type == "onset/offset":
@@ -74,8 +88,8 @@ class Timestamps(list):
         else:
             super().append(val)
             super().sort()
-        self.save()
         self.update_line()
+        self.save()
 
     def pop(self):
         if self.scoring_type == "onset/offset":
@@ -94,8 +108,8 @@ class Timestamps(list):
         else:
             super().pop()
             super().sort()
-        self.save()
         self.update_line()
+        self.save()
 
     def update_line(self):
         os.system("cls" if os.name == "nt" else "clear")
@@ -113,14 +127,16 @@ class Timestamps(list):
             if self.scoring_type == "onset/offset":
                 if len(self[-1]) == 1:
                     self[-1] = (self[-1][0], self[-1][0])
-                self.insert(0, ("onset frame", "offset frame"))
+                if not self[0] == ("onset frame", "offset frame"):
+                    self.insert(0, ("onset frame", "offset frame"))
             else:
                 self.insert(0, ("frame"))
         elif save_frame_or_timestamp == "timestamp":
             if self.scoring_type == "onset/offset":
                 if len(self[-1]) == 1:
                     self[-1] = (self[-1][0], self[-1][0])
-                self.insert(0, ("onset timestamp", "offset timestamp"))
+                if not self[0] == ("onset timestamp", "offset timestamp"):
+                    self.insert(0, ("onset timestamp", "offset timestamp"))
             else:
                 self.insert(0, ("timestamp"))
         return self
@@ -172,6 +188,9 @@ if os.path.exists(
                 n += 1
 
         timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
+else:
+    timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, None)
+
 ######### SETTINGS #########
 scoring_type = "onset/offset"
 save_frame_or_timestamp = "frame"

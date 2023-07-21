@@ -16,14 +16,19 @@ Allows you to score single (onset of behavior) or double (onset and offset of be
 2. Unzip the file and run the vid-scoring.exe file.
 
 ## Usage
-> :warning: **Quitting the program without using the `quit key` will NOT save the data**: Be very careful!
-1. Run the vid-scoring.exe file.
+1. Run the `vid-scoring.exe` file.
+
 2. Depending on how Windows is feeling that day, you may get a warning message. If so, click "More info" and then "Run anyway".
 ![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/b5620628-329a-4f3d-9c19-48318c0f239f)
+
 3. A command prompt Window will open up and prompt you to enter the path to the video you want to score. You can either type the path or drag and drop the video file into the command prompt window. Then press enter. (Quotation marks are not necessary)
 ![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/4953603d-5598-4a5b-9f36-02b479162115)
-4. You will then be prompted to enter the path to a `.sub` file. This is optional. If you are scoring a TDT tank file, you can enter the path to the `.sub` file in the block and the program will automatically load the timestamps for the video from TDT. If you are not scoring a TDT tank file, you can skip this step by pressing enter.
-5. The video should then open up in a new window. Press 'h' to see the help menu. Score away!
+
+4. You will then be prompted browse to a folder to save the output file. The output file will be a `.csv` file with the same name as the video file.
+
+5. You will then be prompted to enter the path to a `.sub` file. This is optional. If you are scoring a TDT tank file, you can enter the path to the `.sub` file in the block and the program will automatically load the timestamps for the video from TDT. If you are not scoring a TDT tank file, you can skip this step by pressing enter.
+
+6. The video should then open up in a new window. Press 'h' to see the help menu. Score away!
 
 ## Settings
 The settings file is located in the `main` folder within the folder containing the vid-scoring.exe file. It is called `settings.ini`. You can edit this file with any text editor. The default settings are as follows:
