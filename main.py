@@ -2,7 +2,7 @@ import os
 import configparser
 from ctypes import create_unicode_buffer, windll, wintypes
 from typing import Optional
-
+import json
 import cv2
 import keyboard
 import numpy
@@ -125,13 +125,14 @@ try:
         for f in os.listdir(os.path.dirname(file_path))
         if os.path.splitext(f)[1] == ".sub"
     ][0]
-    subs_path = subs_path.replace('"', "")
+    subtitles = subs_path.replace('"', "")
 except IndexError:
     # if there is no .sub, ask for the path
     subs_path = input("[OPTIONAL] Enter the path to the .sub file: ")
     if not os.path.exists(subs_path):
         print("File not found, Using video timestamps instead")
-        subs_path = None
+        # subtitles is the ms of each frame, video is 30 fps
+        subtitles = None
 
 intro = f"""
 
@@ -157,30 +158,28 @@ intro = f"""
 
 help_text = f"""
 ################
-KEY BINDINGS:
-
-modify in {os.path.join(os.path.dirname(__file__), "settings.json")}
+SETTINGS: hmodify in {os.path.join(os.path.dirname(__file__), "settings.json")}
 ################
 
-{playback_settings}
+PLAYBACK SETTINGS:
+{json.dumps(playback_settings, indent=4).replace('"', "").replace(",", "").replace("{", "").replace("}", "")}
 
-{key_bindings}
+KEY BINDINGS:
+{json.dumps(key_bindings, indent=4).replace('"', "").replace(",", "").replace("{", "").replace("}", "")}
 
 """
 
 print(intro)
 
 cap = cv2.VideoCapture(file_path)
-subtitles = subs_path
 
 if not subtitles:
     # get the number of frames in the video
     max_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    # get the length of the video in seconds
-    length = int(max_frame / cap.get(cv2.CAP_PROP_FPS))
-    subtitles = [
-        str(int((i / max_frame) * length * 1000)) for i in range(int(max_frame))
-    ]
+    if max_frame == 0:
+        print("Error reading video file")
+        exit()
+    subtitles = [int(i * 1000) for i in range(int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))]
 else:
     with open(subtitles, "r") as f:
         subtitles = f.read().splitlines()
