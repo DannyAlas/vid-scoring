@@ -13,10 +13,10 @@ Allows you to score single (onset of behavior) or double (onset and offset of be
 
 ## Installation
 1. Get the latest release from [here](https://github.com/DannyAlas/vid-scoring/releases/latest) and download the `vid-scoring.zip` file.
-2. Unzip the file and run the vid-scoring.exe file.
+2. Unzip the file and run the vid-scoring.bat file.
 
 ## Usage
-1. Run the `vid-scoring.exe` file.
+1. Run the `vid-scoring.bat` file.
 
 2. Depending on how Windows is feeling that day, you may get a warning message. If so, click "More info" and then "Run anyway".
 ![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/b5620628-329a-4f3d-9c19-48318c0f239f)
