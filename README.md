@@ -1,4 +1,5 @@
 # SIMPLE VIEDO SCORING APP
+![image](https://github.com/DannyAlas/vid-scoring/assets/81212794/3776d189-ae7c-4113-9ee9-47f02a106a60)
 
 ## Description
 Allows you to score single (onset of behavior) or double (onset and offset of behavior) events in a video.
