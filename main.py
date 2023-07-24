@@ -10,7 +10,7 @@ import keyboard
 import numpy
 import requests
 
-VERSION = "v0.0.1"
+VERSION = "v0.0.2"
 
 # try to get the latest version from the repo
 try:
@@ -442,15 +442,23 @@ def get_keypress_name():
     global key_rep_thresh
     current_key = keyboard.get_hotkey_name()
     if current_key == last_key:
-        if key_iter >= key_rep_thresh:
+        if (
+            key_iter >= key_rep_thresh
+            and getForegroundWindowTitle() == f"video-scoring: {file_name}"
+        ):
             return current_key
-        if key_iter <= key_rep_thresh:
+        if (
+            key_iter <= key_rep_thresh
+            and getForegroundWindowTitle() == f"video-scoring: {file_name}"
+        ):
             key_iter += 1
             return ""
-    else:
+    elif getForegroundWindowTitle() == f"video-scoring: {file_name}":
         key_iter = 0
         last_key = current_key
         return current_key
+    else:
+        return ""
 
 
 while cap.isOpened():
