@@ -70,3 +70,22 @@ The settings file is located in the `main` folder within the folder you extracte
 | seek_to_last_frame | `0`   | Seek to the last frame                                                               |
 | increase_playback_speed | `x`   | Increase the playback speed by the amount specified in the settings             |
 | decrease_playback_speed | `z`   | Decrease the playback speed by the `playback_speed_modulator` amount            | 
+
+## Building from source
+1. Clone the repository
+2. Install the dependencies
+```powershell
+pip install -r requirements.txt
+```
+3. Run the `main.py` file to make sure everything is working
+```powershell
+python main.py
+```
+4. Build the executable
+```powershell
+pyinstaller --add-data settings.ini;. --paths C:\path\to\Lib\site-packages --additional-hooks-dir=. main.py
+```
+5. The executable will be located in the `dist` folder. Create a  `vid-scoring.bat` file in the `dist` folder to run the executable. The .bat file should look like this:
+```batch
+%~dp0\main\main.exe
+```
