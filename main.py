@@ -3,7 +3,9 @@ import json
 import os
 from ctypes import create_unicode_buffer, windll
 from tkinter import filedialog
-from typing import Optional
+from typing import Optional, Literal
+import curses
+from curses import wrapper
 
 import cv2
 import keyboard
@@ -31,7 +33,6 @@ def getForegroundWindowTitle() -> Optional[str]:
     length = windll.user32.GetWindowTextLengthW(hWnd)
     buf = create_unicode_buffer(length + 1)
     windll.user32.GetWindowTextW(hWnd, buf, length + 1)
-
     # 1-liner alternative: return buf.value if buf.value else None
     if buf.value:
         return buf.value
@@ -42,18 +43,25 @@ def getForegroundWindowTitle() -> Optional[str]:
 file_path = input("\nEnter the path to the video file: ")
 file_path = file_path.replace('"', "").strip()
 file_name = os.path.basename(file_path)
+while not os.path.exists(file_path):
+    file_path = input("File not found, try again: ")
+    file_path = file_path.replace('"', "").strip()
+    file_name = os.path.basename(file_path)
+    
 
 SAVE_DIR = filedialog.askdirectory()
 
 
 class Timestamps(list):
     # extends list but implements custom append and pop methods depending on scoring type
-    def __init__(self, scoring_type, save_dir, file_path, csv_file):
+    def __init__(self, scoring_type, save_dir, file_path, csv_file, screen):
         self.scoring_type = scoring_type
         self.intermediary = []
         self.save_dir = save_dir
         self.file_path = file_path
         self.csv_file = csv_file
+        self.screen = screen
+        self.selection = 0
         if csv_file:
             if os.path.exists(csv_file):
                 self.load()
@@ -73,6 +81,15 @@ class Timestamps(list):
                 lines = [line.strip().split(",") for line in lines]
                 assert len(lines[0]) == 1
                 self.extend(lines[1:])
+        self.update_line()
+
+    def update_selection(self, amount):
+        if self.selection + amount < 0:
+            self.selection = 0
+        elif self.selection + amount > len(self) - 1:
+            self.selection = len(self) - 1
+        else:
+            self.selection += amount
         self.update_line()
 
     def append(self, val):
@@ -111,9 +128,96 @@ class Timestamps(list):
         self.update_line()
         self.save()
 
+    def show_ts_in_selection(self):
+        # the selection is the index of the selected t in the ts list
+        # the size of the section_window is the number of ts that can be displayed on the screen
+        section_window = self.screen.getmaxyx()[0] - 2
+        # clear the screen
+        self.screen.clear()
+        global SELECTED        
+        # the indexes to show are the selection minus the section_window divided by 2 and the selection plus the section_window divided by 2
+        if self.selection - section_window//2 < 0:
+            start = 0
+            end = section_window
+        elif self.selection + section_window//2 > len(self):
+            start = len(self) - section_window
+            end = len(self)
+        else:
+            start = self.selection - section_window//2
+            end = self.selection + section_window//2
+        
+        for i, t in enumerate(self[start:end]):
+            try:
+                if len(t) == 1:
+                    self.screen.addstr(i, 0, str(t[0])+ " | " + " ")
+                    if t == self[self.selection]:
+                        self.screen.addstr(i, 0, str(t[0])+ " | " + " ", curses.A_REVERSE)
+                        SELECTED = "line"
+                elif len(t) == 2:
+                    self.screen.addstr(i, 0, str(t[0])+ " | " + str(t[1]))
+                    # if the current t is the selected t then highlight it
+                    if t == self[self.selection]:
+                        self.screen.addstr(i, 0, str(t[0])+ " | " + str(t[1]), curses.A_REVERSE)
+                        SELECTED = "line"
+                else:
+                    self.screen.addstr(i, 0, str(t))
+                    if t == self[self.selection]:
+                        self.screen.addstr(i, 0, str(t), curses.A_REVERSE)
+                        SELECTED = "line"
+            except:
+                pass
+    
+        self.screen.refresh()
+    
+    def select_t_idx(self, l_or_r: Literal["l", "r"]):
+        # the selection is the index of the selected t in the ts list
+        section_window = self.screen.getmaxyx()[0] - 2
+        # clear the screen
+        self.screen.clear()
+        # show the header
+        global SELECTED
+        # the indexes to show are the selection minus the section_window divided by 2 and the selection plus the section_window divided by 2
+        if self.selection - section_window//2 < 0:
+            start = 0
+            end = section_window
+        elif self.selection + section_window//2 > len(self):
+            start = len(self) - section_window
+            end = len(self)
+        else:
+            start = self.selection - section_window//2
+            end = self.selection + section_window//2
+        
+        for i, t in enumerate(self[start:end]):
+            try:
+                self.screen.addstr(i, 0, str(t[0])+ " | " + str(t[1]))
+                if t == self[self.selection]:
+                    if l_or_r == "l":
+                        # add the left side of the t to the screen reversed and the right side of the t to the screen normally
+                        self.screen.addstr(i, 0, str(t[0]), curses.A_REVERSE)
+                        self.screen.addstr(i, len(str(t[0])), " | ")
+                        self.screen.addstr(i, len(str(t[0])) + 3, str(t[1]))
+                        SELECTED = "onset"
+                    elif l_or_r == "r":
+                        # add the left side of the t to the screen normally and the right side of the t to the screen reversed
+                        self.screen.addstr(i, 0, str(t[0]))
+                        self.screen.addstr(i, len(str(t[0])), " | ")
+                        self.screen.addstr(i, len(str(t[0])) + 3, str(t[1]), curses.A_REVERSE)
+                        SELECTED = "offset"
+            except Exception as e:
+                print("error", e)
+        self.screen.refresh()
+
+    def get_selected_t(self, selection):
+        global SELECTED
+        if SELECTED == "line":
+            return self[selection]
+        elif SELECTED == "onset":
+            return self[selection][0]
+        elif SELECTED == "offset":
+            return self[selection][1]
+
     def update_line(self):
-        os.system("cls" if os.name == "nt" else "clear")
-        print(self)
+        self.show_ts_in_selection()
 
     def __repr__(self):
         return super().__repr__()
@@ -159,38 +263,6 @@ class Timestamps(list):
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
 
-if os.path.exists(
-    os.path.join(SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv")
-):
-    csv_file_name = os.path.join(
-        SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
-    )
-    try:
-        timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
-    except Exception as e:
-        input(
-            f"WARNING - found existing csv file but could not load it. OVERWRITE the file? (y/n)"
-        )
-        if input == "y":
-            timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
-        else:
-            csv_file_name = os.path.join(
-                SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
-            )
-            n = 1
-            while os.path.exists(csv_file_name):
-                csv_file_name = os.path.join(
-                    SAVE_DIR,
-                    os.path.splitext(os.path.basename(file_path))[0]
-                    + f"({n})"
-                    + ".csv",
-                )
-                n += 1
-
-        timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name)
-else:
-    timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, None)
-
 ######### SETTINGS #########
 scoring_type = "onset/offset"
 save_frame_or_timestamp = "frame"
@@ -224,6 +296,15 @@ key_bindings = {
     "seek to last frame": "0",
     "increase playback speed": "x",
     "decrease playback speed": "z",
+    "increment selected timestamp by seek small": "down",
+    "decrement selected timestamp by seek small": "up",
+    "increment selected timestamp by seek medium": "shift+down",
+    "decrement selected timestamp by seek medium": "shift+up",
+    "increment selected timestamp by seek large": "ctrl+down",
+    "decrement selected timestamp by seek large": "ctrl+up",
+    "select onset timestamp": "left",
+    "select offset timestamp": "right",
+    "set player to selected timestamp": "enter",
 }
 
 try:
@@ -285,6 +366,33 @@ try:
         "decrease playback speed": config["key_bindings"][
             "decrease_playback_speed"
         ].strip(),
+        "increment selected timestamp by seek small": config["key_bindings"][
+            "increment_selected_timestamp_by_seek_small"
+        ].strip(),
+        "decrement selected timestamp by seek small": config["key_bindings"][
+            "decrement_selected_timestamp_by_seek_small"
+        ].strip(),
+        "increment selected timestamp by seek medium": config["key_bindings"][
+            "increment_selected_timestamp_by_seek_medium"
+        ].strip(),
+        "decrement selected timestamp by seek medium": config["key_bindings"][
+            "decrement_selected_timestamp_by_seek_medium"
+        ].strip(),
+        "increment selected timestamp by seek large": config["key_bindings"][
+            "increment_selected_timestamp_by_seek_large"
+        ].strip(),
+        "decrement selected timestamp by seek large": config["key_bindings"][
+            "decrement_selected_timestamp_by_seek_large"
+        ].strip(),
+        "select onset timestamp": config["key_bindings"][
+            "select_onset_timestamp"
+        ].strip(),
+        "select offset timestamp": config["key_bindings"][
+            "select_offset_timestamp"
+        ].strip(),
+        "set player to selected timestamp": config["key_bindings"][
+            "set_player_to_selected_timestamp"
+        ].strip(),
     }
 except Exception as e:
     print("Error reading settings file: ", e)
@@ -343,10 +451,8 @@ KEY BINDINGS:
 
 """
 
-print(intro)
 
 cap = cv2.VideoCapture(file_path)
-timestamps.scoring_type = scoring_type
 if not subtitles:
     # get the number of frames in the video
     max_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -366,6 +472,7 @@ frame_count = 0
 max_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 frozen = False
 paused = False
+SELECTED: Literal["line", "onset", "offset"] = "line"
 
 last_key = None
 current_key = None
@@ -373,10 +480,15 @@ key_iter = 0
 key_rep_thresh = 10
 
 
-def update_line(line):
+def update_line(lines, screen):
     # clear
-    os.system("cls" if os.name == "nt" else "clear")
-    print(line)
+    screen.clear()
+    lines = lines.split("\n")
+    for i, line in enumerate(lines):
+        try:
+            screen.addstr(i, 0, line)
+        except:
+            break
 
 
 def imshow(frame):
@@ -444,121 +556,198 @@ def get_keypress_name():
     if current_key == last_key:
         if (
             key_iter >= key_rep_thresh
-            and getForegroundWindowTitle() == f"video-scoring: {file_name}"
+            and getForegroundWindowTitle() == f"video-scoring: {file_name}" or getForegroundWindowTitle().__contains__("cmd")
         ):
             return current_key
         if (
             key_iter <= key_rep_thresh
-            and getForegroundWindowTitle() == f"video-scoring: {file_name}"
+            and getForegroundWindowTitle() == f"video-scoring: {file_name}" or getForegroundWindowTitle().__contains__("cmd")
         ):
             key_iter += 1
             return ""
-    elif getForegroundWindowTitle() == f"video-scoring: {file_name}":
+    elif getForegroundWindowTitle() == f"video-scoring: {file_name}" or getForegroundWindowTitle().__contains__("cmd"):
         key_iter = 0
         last_key = current_key
         return current_key
     else:
         return ""
 
-
-while cap.isOpened():
-    frame_count = int(frame_count)
-    try:
-        sub = subtitles[frame_count]
-    except Exception as e:
-        sub = subtitles[-1]
-
-    key = cv2.waitKey(int(1000 / fps))
-    # frame = show_current_frame()
-    if key:
-        keypress = get_keypress_name()
-    if keypress == key_bindings["help"]:
-        update_line(help_text)
-    if keypress == key_bindings["exit"]:
-        break
-    elif keypress == key_bindings["save timestamp"]:
-        frozen = not frozen
-        if save_frame_or_timestamp == "frame":
-            timestamps.append(frame_count)
-        elif save_frame_or_timestamp == "timestamp":
-            timestamps.append(sub)
-    elif keypress == key_bindings["show stats"]:
-        update_line(
-            f"""
-        fps: {fps}
-        max_frame: {max_frame}
-        curent_frame: {frame_count}
-        timestamp: {sub}
-        timestamps: {timestamps}
-        """
+def main(screen):
+    global SELECTED
+    global fps
+    global saved_keys
+    global frame_count
+    global max_frame
+    global frozen
+    global paused
+    global last_key
+    global current_key
+    global key_iter
+    global key_rep_thresh
+    global scoring_type
+    global save_frame_or_timestamp
+    global text_color
+    global show_current_frame_number
+    global show_current_timestamp
+    global show_fps
+    screen.clear()
+    curses.use_default_colors() # Use the default background color
+    curses.curs_set(0)          # Don't show cursor
+    screen.nodelay(1) 
+    if os.path.exists(
+        os.path.join(SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv")
+    ):
+        csv_file_name = os.path.join(
+            SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
         )
-    # modify the playback speed
-    elif keypress == key_bindings["increase playback speed"]:
-        fps += playback_settings["playback_speed_modulator"]
-    elif keypress == key_bindings["decrease playback speed"]:
-        if fps > playback_settings["playback_speed_modulator"]:
-            fps -= playback_settings["playback_speed_modulator"]
-    # seek forward or backward with z and x
-    elif keypress == key_bindings["seek forward small frames"]:
-        frame_count += playback_settings["seek_small"]
-        if frame_count > max_frame:
-            frame_count = max_frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek back small frames"]:
-        frame_count -= playback_settings["seek_small"]
-        if frame_count < 0:
-            frame_count = 0
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek back medium frames"]:
-        frame_count -= playback_settings["seek_medium"]
-        if frame_count < 0:
-            frame_count = 0
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek forward medium frames"]:
-        frame_count += 100
-        if frame_count > max_frame:
-            frame_count = max_frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek forward large frames"]:
-        frame_count += playback_settings["seek_large"]
-        if frame_count > max_frame:
-            frame_count = max_frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek back large frames"]:
-        frame_count -= playback_settings["seek_large"]
-        if frame_count < 0:
-            frame_count = 0
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["pause"]:
-        paused = not paused
-        if paused:
-            last_frame = frame
-        else:
-            frame = last_frame
-            imshow(frame)
-    elif keypress == key_bindings["undo last timestamp save"]:
         try:
-            timestamps.pop()
-            update_line(timestamps)
-        except IndexError:
-            pass
-    elif keypress == key_bindings["seek to first frame"]:
-        frame_count = 0
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    elif keypress == key_bindings["seek to last frame"]:
-        frame_count = max_frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-        frame = show_current_frame()
-    if not paused:
-        frame = show_current_frame()
-        if frame_count < max_frame - 1:
-            frame_count += 1
+            timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name, screen=screen)
+        except Exception as e:
+            input(
+                f"WARNING - found existing csv file but could not load it. OVERWRITE the file? (y/n)"
+            )
+            if input == "y":
+                timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name, screen=screen)
+            else:
+                csv_file_name = os.path.join(
+                    SAVE_DIR, os.path.splitext(os.path.basename(file_path))[0] + ".csv"
+                )
+                n = 1
+                while os.path.exists(csv_file_name):
+                    csv_file_name = os.path.join(
+                        SAVE_DIR,
+                        os.path.splitext(os.path.basename(file_path))[0]
+                        + f"({n})"
+                        + ".csv",
+                    )
+                    n += 1
 
-timestamps.save()
+            timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, csv_file_name, screen=screen)
+    else:
+        timestamps = Timestamps("onset/offset", SAVE_DIR, file_path, None, screen=screen)
+    
+    timestamps.scoring_type = scoring_type  
+    while cap.isOpened():
+        frame_count = int(frame_count)
+        try:
+            sub = subtitles[frame_count]
+        except Exception as e:
+            sub = subtitles[-1]
+
+        key = cv2.waitKey(int(1000 / fps))
+        # frame = show_current_frame()
+        if key:
+            keypress = get_keypress_name()
+            print(keypress)
+        if keypress == key_bindings["help"]:
+            update_line(help_text, screen)
+        if keypress == key_bindings["exit"]:
+            break
+        elif keypress == key_bindings["save timestamp"]:
+            frozen = not frozen
+            if save_frame_or_timestamp == "frame":
+                timestamps.append(frame_count)
+            elif save_frame_or_timestamp == "timestamp":
+                timestamps.append(sub)
+        elif keypress == key_bindings["show stats"]:
+            update_line(
+                f"""
+            fps: {fps}
+            max_frame: {max_frame}
+            curent_frame: {frame_count}
+            timestamp: {sub}
+            timestamps: {timestamps}
+            """, screen
+            )
+        # modify the playback speed
+        elif keypress == key_bindings["increase playback speed"]:
+            fps += playback_settings["playback_speed_modulator"]
+        elif keypress == key_bindings["decrease playback speed"]:
+            if fps > playback_settings["playback_speed_modulator"]:
+                fps -= playback_settings["playback_speed_modulator"]
+        # seek forward or backward with z and x
+        elif keypress == key_bindings["seek forward small frames"]:
+            frame_count += playback_settings["seek_small"]
+            if frame_count > max_frame:
+                frame_count = max_frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek back small frames"]:
+            frame_count -= playback_settings["seek_small"]
+            if frame_count < 0:
+                frame_count = 0
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek back medium frames"]:
+            frame_count -= playback_settings["seek_medium"]
+            if frame_count < 0:
+                frame_count = 0
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek forward medium frames"]:
+            frame_count += 100
+            if frame_count > max_frame:
+                frame_count = max_frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek forward large frames"]:
+            frame_count += playback_settings["seek_large"]
+            if frame_count > max_frame:
+                frame_count = max_frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek back large frames"]:
+            frame_count -= playback_settings["seek_large"]
+            if frame_count < 0:
+                frame_count = 0
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["pause"]:
+            paused = not paused
+            if paused:
+                last_frame = frame
+            else:
+                frame = last_frame
+                imshow(frame)
+        elif keypress == key_bindings["undo last timestamp save"]:
+            try:
+                timestamps.pop()
+            except IndexError:
+                pass
+        elif keypress == key_bindings["seek to first frame"]:
+            frame_count = 0
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        elif keypress == key_bindings["seek to last frame"]:
+            frame_count = max_frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            frame = show_current_frame()
+        # down arrow
+        elif keypress == key_bindings["increment selected timestamp by seek small"]:
+            timestamps.update_selection(playback_settings["seek_small"])
+        # up arrow
+        elif keypress == key_bindings["decrement selected timestamp by seek small"]:
+            timestamps.update_selection(-playback_settings["seek_small"])
+        elif keypress == key_bindings["increment selected timestamp by seek medium"]:
+            timestamps.update_selection(playback_settings["seek_medium"])
+        elif keypress == key_bindings["decrement selected timestamp by seek medium"]:
+            timestamps.update_selection(-playback_settings["seek_medium"])
+        elif keypress == key_bindings["increment selected timestamp by seek large"]:
+            timestamps.update_selection(playback_settings["seek_large"])
+        elif keypress == key_bindings["decrement selected timestamp by seek large"]:
+            timestamps.update_selection(-playback_settings["seek_large"])
+        elif keypress == key_bindings["select onset timestamp"]:
+            timestamps.select_t_idx("l")
+        elif keypress == key_bindings["select offset timestamp"]:
+            timestamps.select_t_idx("r")
+        if not paused:
+            frame = show_current_frame()
+            if frame_count < max_frame - 1:
+                frame_count += 1
+    
+    timestamps.save()
+
+if __name__ == "__main__":
+    print(intro)
+    wrapper(main)
+
